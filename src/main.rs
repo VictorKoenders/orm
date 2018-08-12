@@ -2,6 +2,16 @@ extern crate dotenv;
 extern crate orm;
 
 use orm::DbSet;
+
+#[derive(Debug)]
+// #[derive(Table)]
+pub struct User {
+    pub id: i32,
+    pub name: String,
+    pub birthdate: String,
+}
+
+// TODO: Generate this with a #[derive(Table)] on `struct User`
 mod user {
     #[allow(dead_code, non_camel_case_types)]
     pub struct id;
@@ -42,9 +52,6 @@ mod user {
         pub fn birthdate(self) -> ::orm::PartialCriteria<::User, Self, birthdate> {
             ::orm::PartialCriteria::new(self.builder)
         }
-        pub fn execute(self) -> ::orm::Result<Vec<::User>> {
-            self.builder.execute()
-        }
     }
 
     impl From<::orm::QueryBuilder> for Query {
@@ -53,9 +60,14 @@ mod user {
         }
     }
 
-    impl ::orm::Query<::User> for Query {}
+    impl ::orm::Query<::User> for Query {
+        fn execute(self) -> ::orm::Result<Vec<::User>> {
+            self.builder.execute()
+        }
+    }
 }
 
+// TODO: Generate this with a #[derive(Table)] on `struct User`
 impl orm::Table for User {
     type ID = user::id;
     type QUERY = user::Query;
@@ -92,6 +104,12 @@ impl orm::Table for User {
     }
 }
 
+// #[derive(DbContext)]
+pub struct Context {
+    pub users: DbSet<User>,
+}
+
+// TODO: Generate this with a #[derive(DbContext)] on `struct Context`
 impl orm::DbContext for Context {
     fn connect(_url: impl AsRef<str>) -> ::orm::Result<Self> {
         let connection =
@@ -109,19 +127,6 @@ fn main() {
     }
 }
 
-#[derive(Debug)]
-// #[derive(Table)]
-pub struct User {
-    pub id: i32,
-    pub name: String,
-    pub birthdate: String,
-}
-
-// #[derive(DbContext)]
-pub struct Context {
-    pub users: DbSet<User>,
-}
-
 fn run() -> ::orm::Result<()> {
     dotenv::dotenv().expect("Could not load .env file");
     use orm::DbContext;
@@ -136,6 +141,7 @@ fn run() -> ::orm::Result<()> {
         }
     }
     {
+        use orm::Query;
         let users = context
             .users
             .query()

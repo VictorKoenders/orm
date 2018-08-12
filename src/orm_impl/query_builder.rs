@@ -2,6 +2,7 @@ use super::{Column, Result, Table};
 use postgres::{types::ToSql, Connection};
 use std::rc::Rc;
 
+/// A querybuilder, used internally by the [Query](trait.Query.html) object to generate an actual query.
 pub struct QueryBuilder {
     connection: Rc<Connection>,
     tables: Vec<&'static str>,
@@ -18,6 +19,7 @@ impl QueryBuilder {
             params: Vec::new(),
         }
     }
+    /// Execute this querybuilder and return the resulting data. The database rows are passed to Table's [load_from_reader](trait.Table.html#tymethod.load_from_reader) method to create an instance.
     pub fn execute<TABLE: Table>(self) -> Result<Vec<TABLE>> {
         let mut query = format!("SELECT * FROM {}", self.tables[0]);
         for (index, (table, criteria)) in self.criteria.into_iter().enumerate() {
@@ -41,6 +43,8 @@ impl QueryBuilder {
         }
         Ok(result)
     }
+
+    /// Add a criteria to this query
     pub fn add_criteria<COLUMN: Column>(&mut self, table: &'static str, value: COLUMN::Type)
     where
         COLUMN::Type: ToSql + 'static,
