@@ -1,5 +1,5 @@
 mod column;
-mod criteria;
+// mod criteria;
 mod db_context;
 mod dbset;
 mod partial_criteria;
@@ -9,7 +9,7 @@ mod queryable;
 mod table;
 
 pub use self::column::Column;
-pub use self::criteria::Criteria;
+// pub use self::criteria::Criteria;
 pub use self::db_context::DbContext;
 pub use self::dbset::DbSet;
 pub use self::partial_criteria::PartialCriteria;

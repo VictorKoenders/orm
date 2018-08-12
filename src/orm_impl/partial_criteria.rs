@@ -1,17 +1,23 @@
+use super::{Column, Query, QueryBuilder, Table};
+use postgres::types::ToSql;
 use std::marker::PhantomData;
-use super::{Table, Queryable, Query, Column, Criteria};
 
-pub struct PartialCriteria<TABLE: Table, QUERY: Query<TABLE>, COLUMN: Column> {
-    inner: Box<Queryable<TABLE>>,
+pub struct PartialCriteria<'a, TABLE: Table, QUERY: Query<TABLE>, COLUMN: Column> {
+    builder: QueryBuilder<'a>,
     pd_table: PhantomData<TABLE>,
     pd_query: PhantomData<QUERY>,
     pd_column: PhantomData<COLUMN>,
 }
 
-impl<TABLE: Table, QUERY: Query<TABLE>, COLUMN: Column> PartialCriteria<TABLE, QUERY, COLUMN> {
-    pub fn new(inner: Box<Queryable<TABLE>>) -> Self {
+impl<'a, TABLE, QUERY, COLUMN> PartialCriteria<'a, TABLE, QUERY, COLUMN>
+where
+    TABLE: Table,
+    QUERY: Query<TABLE>,
+    COLUMN: Column,
+{
+    pub fn new(builder: QueryBuilder<'a>) -> Self {
         Self {
-            inner,
+            builder,
 
             pd_table: PhantomData,
             pd_query: PhantomData,
@@ -19,11 +25,11 @@ impl<TABLE: Table, QUERY: Query<TABLE>, COLUMN: Column> PartialCriteria<TABLE, Q
         }
     }
 
-    pub fn eq(self, value: COLUMN::Type) -> Criteria<TABLE, QUERY, COLUMN> {
-        Criteria::new(self.inner, value)
-    }
-
-    pub fn gt(self, value: COLUMN::Type) -> Criteria<TABLE, QUERY, COLUMN> {
-        Criteria::new(self.inner, value)
+    pub fn eq(mut self, value: &'a COLUMN::Type) -> QUERY
+    where
+        COLUMN::Type: ToSql,
+    {
+        self.builder.add_criteria::<COLUMN>(value);
+        self.builder.into()
     }
 }

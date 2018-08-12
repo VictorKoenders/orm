@@ -1,23 +1,19 @@
 use std::marker::PhantomData;
-use super::{Column, Table, Result, Query};
+use super::{Column, Table, Result, QueryBuilder};
+use postgres::Connection;
+use std::rc::Rc;
 
 pub struct DbSet<TABLE: Table> {
     pd_table: PhantomData<TABLE>,
-}
-
-impl<TABLE: Table> ::std::clone::Clone for DbSet<TABLE> {
-    fn clone(&self) -> Self {
-        Self {
-            pd_table: PhantomData,
-        }
-    }
+    connection: Rc<Connection>,
 }
 
 impl<TABLE: Table> DbSet<TABLE> {
     #[doc(hidden)]
-    pub fn __new() -> Self {
+    pub fn __new(connection: Rc<Connection>) -> Self {
         Self {
             pd_table: PhantomData,
+            connection,
         }
     }
 
@@ -25,9 +21,8 @@ impl<TABLE: Table> DbSet<TABLE> {
         Ok(None)
     }
 
-    pub fn query(&self) -> <TABLE as Table>::QUERY {
-        let cloned: DbSet<TABLE> = self.clone();
-        <TABLE as Table>::QUERY::on(cloned)
+    pub fn query(&self) -> <TABLE as Table>::Query {
+        QueryBuilder::new(&self.connection).into()
     }
 
     pub fn save(&mut self, _t: &mut TABLE) -> Result<()> {

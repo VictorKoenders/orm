@@ -1,5 +1,4 @@
-use super::{Table, DbSet};
+use super::{Table, QueryBuilder};
 
-pub trait Query<TABLE: Table> {
-    fn on(set: DbSet<TABLE>) -> Self;
+pub trait Query<TABLE: Table> : for<'a> From<QueryBuilder<'a>> {
 }
