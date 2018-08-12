@@ -2,20 +2,20 @@ use super::{Column, Query, QueryBuilder, Table};
 use postgres::types::ToSql;
 use std::marker::PhantomData;
 
-pub struct PartialCriteria<'a, TABLE: Table, QUERY: Query<TABLE>, COLUMN: Column> {
-    builder: QueryBuilder<'a>,
+pub struct PartialCriteria<TABLE: Table, QUERY: Query<TABLE>, COLUMN: Column> {
+    builder: QueryBuilder,
     pd_table: PhantomData<TABLE>,
     pd_query: PhantomData<QUERY>,
     pd_column: PhantomData<COLUMN>,
 }
 
-impl<'a, TABLE, QUERY, COLUMN> PartialCriteria<'a, TABLE, QUERY, COLUMN>
+impl<TABLE, QUERY, COLUMN> PartialCriteria<TABLE, QUERY, COLUMN>
 where
     TABLE: Table,
     QUERY: Query<TABLE>,
     COLUMN: Column,
 {
-    pub fn new(builder: QueryBuilder<'a>) -> Self {
+    pub fn new(builder: QueryBuilder) -> Self {
         Self {
             builder,
 
@@ -25,11 +25,12 @@ where
         }
     }
 
-    pub fn eq(mut self, value: &'a COLUMN::Type) -> QUERY
+    pub fn eq(mut self, value: COLUMN::Type) -> QUERY
     where
-        COLUMN::Type: ToSql,
+        COLUMN::Type: ToSql + 'static,
     {
-        self.builder.add_criteria::<COLUMN>(value);
+        self.builder
+            .add_criteria::<COLUMN>(TABLE::table_name(), value);
         self.builder.into()
     }
 }

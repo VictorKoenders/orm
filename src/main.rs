@@ -1,3 +1,4 @@
+extern crate dotenv;
 extern crate orm;
 
 use orm::DbSet;
@@ -5,7 +6,7 @@ mod user {
     #[allow(dead_code, non_camel_case_types)]
     pub struct id;
     impl ::orm::Column for id {
-        type Type = u32;
+        type Type = i32;
         fn name() -> &'static str {
             "id"
         }
@@ -27,18 +28,18 @@ mod user {
         }
     }
 
-    pub struct Query<'a> {
-        builder: ::orm::QueryBuilder<'a>,
+    pub struct Query {
+        builder: ::orm::QueryBuilder,
     }
 
-    impl<'a> Query<'a> {
-        pub fn id(self) -> ::orm::PartialCriteria<'a, ::User, Self, id> {
+    impl Query {
+        pub fn id(self) -> ::orm::PartialCriteria<::User, Self, id> {
             ::orm::PartialCriteria::new(self.builder)
         }
-        pub fn name(self) -> ::orm::PartialCriteria<'a, ::User, Self, name> {
+        pub fn name(self) -> ::orm::PartialCriteria<::User, Self, name> {
             ::orm::PartialCriteria::new(self.builder)
         }
-        pub fn birthdate(self) -> ::orm::PartialCriteria<'a, ::User, Self, birthdate> {
+        pub fn birthdate(self) -> ::orm::PartialCriteria<::User, Self, birthdate> {
             ::orm::PartialCriteria::new(self.builder)
         }
         pub fn execute(self) -> ::orm::Result<Vec<::User>> {
@@ -46,14 +47,13 @@ mod user {
         }
     }
 
-    impl<'a> From<::orm::QueryBuilder<'a>> for Query<'a> {
-        fn from(builder: ::orm::QueryBuilder<'a>) -> Query<'a> {
+    impl From<::orm::QueryBuilder> for Query {
+        fn from(builder: ::orm::QueryBuilder) -> Query {
             Query { builder }
         }
     }
 
-    impl<'a> ::orm::Query<::User> for Query<'a> {
-    }
+    impl ::orm::Query<::User> for Query {}
 }
 
 impl orm::Table for User {
@@ -112,7 +112,7 @@ fn main() {
 #[derive(Debug)]
 // #[derive(Table)]
 pub struct User {
-    pub id: u32,
+    pub id: i32,
     pub name: String,
     pub birthdate: String,
 }
@@ -123,8 +123,10 @@ pub struct Context {
 }
 
 fn run() -> ::orm::Result<()> {
-    use orm::{DbContext, Queryable};
-    let mut context = Context::connect("...")?;
+    dotenv::dotenv().expect("Could not load .env file");
+    use orm::DbContext;
+    let mut context =
+        Context::connect(std::env::var("DATABASE_URL").expect("Could not load DATABASE_URL"))?;
     {
         if let Some(mut user) = context.users.load_by_id(5)? {
             println!("{:?}", user);
@@ -133,10 +135,17 @@ fn run() -> ::orm::Result<()> {
             context.users.save(&mut user)?;
         }
     }
-    /*{
-        let users = context.users.query().id().eq(1).execute()?;
+    {
+        let users = context
+            .users
+            .query()
+            .id()
+            .eq(1)
+            .name()
+            .eq(String::from("test"))
+            .execute()?;
         println!("{:?}", users);
-    }*/
+    }
 
     Ok(())
 }

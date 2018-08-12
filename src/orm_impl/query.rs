@@ -1,4 +1,3 @@
-use super::{Table, QueryBuilder};
+use super::{QueryBuilder, Table};
 
-pub trait Query<TABLE: Table> : for<'a> From<QueryBuilder<'a>> {
-}
+pub trait Query<TABLE: Table>: From<QueryBuilder> {}

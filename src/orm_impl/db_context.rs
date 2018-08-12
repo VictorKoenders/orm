@@ -1,5 +1,5 @@
 use super::Result;
 
-pub trait DbContext : Sized {
+pub trait DbContext: Sized {
     fn connect(url: impl AsRef<str>) -> Result<Self>;
 }
