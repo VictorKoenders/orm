@@ -1,40 +1,113 @@
-#![deny(missing_docs)]
+use postgres::types::ToSql;
+use std::marker::PhantomData;
 
-//! ORM is a simple object relational mapper implemented in Rust. It tries to make the development cycle as short and smooth as possible, even if this were to sacrifice some speed.
-//! 
-//! ORM works with a single object called a [DbContext](trait.DbContext.html). This object contains one or more (DbSets)[struct.DbSet.html].
-//! 
-//! The generic argument of a `DbSet` is a struct that derives from [Table](trait.Table.html). 
-//! 
-//! ```rust
-//! 
-//! #[derive(DbContext)]
-//! pub struct Context {
-//!     pub users: DbSet<User>,
-//! }
-//! 
-//! #[derive(Debug)]
-//! #[derive(Table)]
-//! pub struct User {
-//!     pub id: i32,
-//!     pub name: String,
-//!     pub birthdate: String,
-//! }
-//! 
-//! fn main() { 
-//!     // TODO: Get this from a .env file with the dotenv crate
-//!     let mut context = Context::connect("postgres://postgres:postgres@localhost/orm").unwrap();
-//! 
-//!     // Load all users named 'Bob'
-//!     let users = context.users.query().name.eq("Bob").execute().unwrap();
-//!     println!("{:?}", users);
-//! }
-//! ```
+pub struct DbSet<T> {
+    _marker: PhantomData<T>,
+}
 
-/// Re-export the failure crate for the derive macros to use
-pub extern crate failure;
-/// Re-export the postgres crate for the derive macros to use
-pub extern crate postgres;
+impl<T: DbTable> DbSet<T> {
+    #[doc(hidden)]
+    pub fn __new() -> DbSet<T> {
+        DbSet {
+            _marker: PhantomData,
+        }
+    }
 
-mod orm_impl;
-pub use orm_impl::*;
+    pub fn filter<FN, RESULT>(&self, cb: FN) -> Result<Vec<T>>
+    where
+        FN: FnOnce(<T as DbTable>::QueryBuilder) -> RESULT,
+        RESULT: Queryable<T>,
+    {
+        let builder = cb(Default::default());
+        builder.get_results()
+    }
+}
+
+pub trait Queryable<T> {
+    fn get_results(&self) -> Result<Vec<T>>;
+    fn get_result(&self) -> Result<Option<T>> {
+        Ok(self.get_results()?.into_iter().next())
+    }
+}
+
+impl<T> Queryable<T> for DbSet<T> {
+    fn get_results(&self) -> Result<Vec<T>> {
+        //TODO: "SELECT * FROM {{table}}"
+        unimplemented!()
+    }
+}
+
+pub trait DbTable {
+    type QueryBuilder: Default;
+    fn table_name() -> &'static str;
+}
+
+pub trait QueryBuilder {
+    fn set<COLUMN, VALUE, RESULT>(self, v: VALUE) -> RESULT;
+}
+
+pub type Result<T> = std::result::Result<T, failure::Error>;
+
+pub struct Expression<PARENT, COLUMN> {
+    parent: PARENT,
+    _column: PhantomData<COLUMN>,
+}
+
+impl<PARENT, COLUMN> Expression<PARENT, COLUMN> {
+    pub fn new(parent: PARENT) -> Self {
+        Self {
+            parent,
+            _column: PhantomData,
+        }
+    }
+
+    pub fn eq<VAL>(self, val: VAL) -> <PARENT as ExpressionNext<COLUMN, Eq<VAL>>>::Result
+    where
+        PARENT: ExpressionNext<COLUMN, Eq<VAL>>,
+        COLUMN: DbColumn,
+        VAL: DbEquals<<COLUMN as DbColumn>::Type>,
+    {
+        self.parent.next(Eq { val })
+    }
+}
+
+pub trait ExpressionNext<COLUMN, T> {
+    type Result;
+
+    fn next(self, val: T) -> Self::Result;
+}
+
+pub trait DbEquals<OTHER> {}
+pub enum ExpressionCompare {
+    Equals,
+}
+
+pub trait DbColumn {
+    type Type;
+    fn name() -> &'static str;
+}
+
+impl<'a> DbEquals<&'a str> for String {}
+impl<'a> DbEquals<String> for &'a str {}
+
+impl<A> DbEquals<A> for A {}
+
+pub trait AsQueryFilter {
+    fn as_query_filter(&self, index: usize) -> Option<(String, &ToSql)>;
+}
+
+impl AsQueryFilter for () {
+    fn as_query_filter(&self, _index: usize) -> Option<(String, &ToSql)> {
+        None
+    }
+}
+
+pub struct Eq<T> {
+    val: T,
+}
+
+impl<T: ToSql + 'static> AsQueryFilter for Eq<T> {
+    fn as_query_filter(&self, index: usize) -> Option<(String, &ToSql)> {
+        Some((format!("= ${}", index + 1), &self.val))
+    }
+}
