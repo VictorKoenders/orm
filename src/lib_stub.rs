@@ -1,4 +1,5 @@
 use postgres::types::ToSql;
+use postgres::GenericConnection;
 use std::marker::PhantomData;
 
 pub struct DbSet<T> {
@@ -40,6 +41,36 @@ impl<T> Queryable<T> for DbSet<T> {
 pub trait DbTable {
     type QueryBuilder: Default;
     fn table_name() -> &'static str;
+
+    fn update_database_schema(updater: &mut TableUpdater) -> Result<()>;
+}
+
+pub struct TableUpdater<'a> {
+    pub conn: &'a mut GenericConnection,
+}
+
+impl<'a> TableUpdater<'a> {
+    pub fn table<'b>(&'b self, name: &'b str) -> TableBuilder<'a, 'b> {
+        TableBuilder {
+            name,
+            updater: self,
+        }
+    }
+}
+
+pub struct TableBuilder<'a, 'b> {
+    name: &'b str,
+    updater: &'b TableUpdater<'a>,
+}
+
+impl<'a, 'b> TableBuilder<'a, 'b> {
+    pub fn column<T: DbColumn>(self, _column: T) -> Self {
+        self
+    }
+
+    pub fn build(self) -> Result<()> {
+        Ok(())
+    }
 }
 
 pub trait QueryBuilder {

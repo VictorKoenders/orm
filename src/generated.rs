@@ -30,6 +30,10 @@ pub mod user {
         fn table_name() -> &'static str {
             "user"
         }
+
+        fn update_database_schema(updater: &mut crate::TableUpdater) -> crate::Result<()> {
+            updater.table("user").column(ID).column(NAME).build()
+        }
     }
 
     impl<TID, TNAME> crate::Queryable<crate::User> for QueryBuilder<TID, TNAME>
@@ -102,8 +106,31 @@ pub mod user {
     }
 }
 
+pub mod dbcontext {
+    use lazy_static::lazy_static;
+
+    lazy_static! {
+        pub static ref POOL: r2d2::Pool<r2d2_postgres::PostgresConnectionManager> = {
+            let url = std::env::var("DATABASE_URL")
+                .expect("Could not get environment var \"DATABASE_URL\"");
+            let manager =
+                r2d2_postgres::PostgresConnectionManager::new(url, r2d2_postgres::TlsMode::None)
+                    .expect("Could not set up connection to the server");
+            r2d2::Pool::new(manager).expect("Could not set up a connection pool")
+        };
+    }
+}
+
 impl crate::DbContext {
-    pub fn connect(_url: &str) -> crate::Result<crate::DbContext> {
+    pub fn new() -> crate::Result<crate::DbContext> {
+        let conn = dbcontext::POOL.get()?;
+
+        let mut transaction = conn.transaction()?;
+        <crate::User as crate::DbTable>::update_database_schema(&mut crate::TableUpdater {
+            conn: &mut transaction,
+        })?;
+        transaction.finish()?;
+
         Ok(crate::DbContext {
             users: crate::DbSet::__new(),
         })

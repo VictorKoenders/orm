@@ -3,11 +3,11 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-mod generated;
-mod lib;
+pub mod generated;
+pub mod lib_stub;
 
 use crate::generated::*;
-use crate::lib::*;
+use crate::lib_stub::*;
 
 #[derive(Debug)]
 pub struct User {
@@ -20,8 +20,7 @@ pub struct DbContext {
 }
 
 fn main() {
-    let context = DbContext::connect("postgres://trangar:Development@localhost/orm")
-        .expect("Could not connect to database");
+    let context = DbContext::new().expect("Could not connect to database");
 
     let users = context
         .users

@@ -1,12 +1,14 @@
 [package]
 authors = ["Victor Koenders <victor.koenders@gmail.com>"]
-name = "orm"
 edition = "2018"
+name = "orm"
 version = "0.1.0"
-
 [dependencies]
 chrono = "0.4.6"
 dotenv = "0.13.0"
 failure = "0.1.4"
+lazy_static = "*"
 postgres = "0.15.2"
+r2d2 = "0.8.3"
+r2d2_postgres = "0.14.0"
 uuid = "0.7.1"
