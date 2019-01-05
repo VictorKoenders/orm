@@ -13,3 +13,4 @@ postgres = "0.15.2"
 r2d2 = "0.8.3"
 r2d2_postgres = "0.14.0"
 uuid = "0.7.1"
+orm_derive = { path = "derive" }
