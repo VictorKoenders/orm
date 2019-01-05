@@ -1,16 +1,17 @@
 pub mod user {
-    #[derive(Default)]
     #[allow(unused)]
     pub struct QueryBuilder<TID, TNAME> {
         #[allow(unused)]
         id: TID,
         #[allow(unused)]
         name: TNAME,
+
+        db: crate::InnerContext,
     }
 
     #[allow(unused)]
     pub struct ID;
-    impl crate::DbColumn for ID {
+    impl crate::Column for ID {
         type Type = i32;
         fn name() -> &'static str {
             "id"
@@ -18,14 +19,14 @@ pub mod user {
     }
     #[allow(unused)]
     pub struct NAME;
-    impl crate::DbColumn for NAME {
+    impl crate::Column for NAME {
         type Type = String;
         fn name() -> &'static str {
             "name"
         }
     }
 
-    impl crate::DbTable for crate::User {
+    impl crate::Table for crate::User {
         type QueryBuilder = QueryBuilder<(), ()>;
         fn table_name() -> &'static str {
             "user"
@@ -33,6 +34,13 @@ pub mod user {
 
         fn update_database_schema(updater: &mut crate::TableUpdater) -> crate::Result<()> {
             updater.table("user").column(ID).column(NAME).build()
+        }
+
+        fn from_reader(row: &postgres::rows::Row) -> crate::Result<crate::User> {
+            Ok(crate::User {
+                id: row.get_opt(0).unwrap()?,
+                name: row.get_opt(1).unwrap()?,
+            })
         }
     }
 
@@ -42,17 +50,22 @@ pub mod user {
         TNAME: crate::AsQueryFilter,
     {
         fn get_results(&self) -> crate::Result<Vec<crate::User>> {
-            let mut query = format!(
-                "SELECT * FROM \"{}\"",
-                <crate::User as crate::DbTable>::table_name()
-            );
+            let mut query = String::from("SELECT ");
+            query += "\"";
+            query += <ID as crate::Column>::name();
+            query += "\", \"";
+            query += <NAME as crate::Column>::name();
+            query += "\"";
+            query += " FROM \"";
+            query += <crate::User as crate::Table>::table_name();
+            query += "\"";
             let mut values = Vec::new();
 
             if let Some((format, val)) = self.id.as_query_filter(values.len()) {
                 query += &format!(
                     " {} \"{}\"{}",
                     if values.is_empty() { "WHERE" } else { "AND" },
-                    <ID as crate::DbColumn>::name(),
+                    <ID as crate::Column>::name(),
                     format
                 );
                 values.push(val);
@@ -62,14 +75,23 @@ pub mod user {
                 query += &format!(
                     " {} \"{}\"{}",
                     if values.is_empty() { "WHERE" } else { "AND" },
-                    <NAME as crate::DbColumn>::name(),
+                    <NAME as crate::Column>::name(),
                     format
                 );
                 values.push(val);
             }
 
             println!("Query: {:?}", query);
-            unimplemented!()
+            println!("Arguments: {:?}", values);
+
+            let conn = self.db.pool.get()?;
+
+            let rows = conn.query(&query, values.as_slice())?;
+            let mut results = Vec::with_capacity(rows.len());
+            for row in rows.iter() {
+                results.push(<crate::User as crate::Table>::from_reader(&row)?);
+            }
+            Ok(results)
         }
     }
 
@@ -85,6 +107,7 @@ pub mod user {
             QueryBuilder {
                 id: val,
                 name: self.name,
+                db: self.db,
             }
         }
     }
@@ -101,38 +124,37 @@ pub mod user {
             QueryBuilder {
                 id: self.id,
                 name: val,
+                db: self.db,
+            }
+        }
+    }
+
+    impl crate::QueryBuilder for QueryBuilder<(), ()> {
+        fn new(inner: crate::InnerContext) -> Self {
+            QueryBuilder {
+                id: (),
+                name: (),
+                db: inner,
             }
         }
     }
 }
 
-pub mod dbcontext {
-    use lazy_static::lazy_static;
-
-    lazy_static! {
-        pub static ref POOL: r2d2::Pool<r2d2_postgres::PostgresConnectionManager> = {
-            let url = std::env::var("DATABASE_URL")
-                .expect("Could not get environment var \"DATABASE_URL\"");
-            let manager =
-                r2d2_postgres::PostgresConnectionManager::new(url, r2d2_postgres::TlsMode::None)
-                    .expect("Could not set up connection to the server");
-            r2d2::Pool::new(manager).expect("Could not set up a connection pool")
-        };
-    }
-}
-
 impl crate::DbContext {
-    pub fn new() -> crate::Result<crate::DbContext> {
-        let conn = dbcontext::POOL.get()?;
+    pub fn new(url: &str) -> crate::Result<crate::DbContext> {
+        let context = crate::InnerContext::new(url)?;
+        let conn = context.pool.get()?;
 
         let mut transaction = conn.transaction()?;
-        <crate::User as crate::DbTable>::update_database_schema(&mut crate::TableUpdater {
+        <crate::User as crate::Table>::update_database_schema(&mut crate::TableUpdater {
             conn: &mut transaction,
         })?;
-        transaction.finish()?;
+        println!("Committing transaction");
+        transaction.commit()?;
+        println!("Done");
 
         Ok(crate::DbContext {
-            users: crate::DbSet::__new(),
+            users: crate::DbSet::__new(context.clone()),
         })
     }
 }
