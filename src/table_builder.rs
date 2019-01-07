@@ -18,11 +18,8 @@ impl<'a, 'b> TableBuilder<'a, 'b> {
     }
 
     pub fn column<T: Column>(mut self, _column: T) -> Self
-    where
-        T::Type: ToSqlTypeName,
     {
-        let type_name = <T::Type as ToSqlTypeName>::name();
-        self.fields.insert(T::name().to_owned(), type_name);
+        self.fields.insert(T::name().to_owned(), T::db_type());
         self
     }
 

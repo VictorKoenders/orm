@@ -1,5 +1,5 @@
 #![allow(unused_variables, unused_mut, unused_imports)]
- #![allow(proc_macro_derive_resolution_fallback)]
+#![allow(proc_macro_derive_resolution_fallback)]
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;

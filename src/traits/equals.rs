@@ -1,4 +1,3 @@
-
 pub trait DbEquals<OTHER> {}
 
 impl<'a> DbEquals<&'a str> for String {}

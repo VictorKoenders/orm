@@ -1,4 +1,3 @@
-
 pub trait ToSqlTypeName {
     fn name() -> &'static str;
 }

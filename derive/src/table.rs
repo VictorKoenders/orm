@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::quote;
 use syn::spanned::Spanned;
-use syn::{Field, ItemStruct, Result};
+use syn::{Field, ItemStruct, Result, Type};
 
 pub fn generate_implementation(obj: &ItemStruct) -> Result<TokenStream> {
     let mod_name = Ident::new(&obj.ident.to_string().to_lowercase(), Span::call_site());
@@ -11,7 +11,7 @@ pub fn generate_implementation(obj: &ItemStruct) -> Result<TokenStream> {
 
     let mut table_columns = Vec::new();
     for field in &fields {
-        table_columns.push(generate_table_column(&field)?);
+        table_columns.push(generate_table_column(&field, &fields)?);
     }
 
     let table_impl = generate_table_impl(&obj, fields.as_slice())?;
@@ -70,13 +70,21 @@ pub fn generate_query_builder_definition(fields: &[&Field]) -> Result<TokenStrea
     })
 }
 
-pub fn generate_table_column(field: &Field) -> Result<TokenStream2> {
+pub fn generate_table_column(field: &Field, fields: &[&Field]) -> Result<TokenStream2> {
     let name_string = match field.ident.as_ref() {
         Some(i) => i.to_string(),
         None => return Err(syn::Error::new(field.span(), "Fields need to be named")),
     };
     let name = Ident::new(&name_string.to_uppercase(), Span::call_site());
     let type_ = &field.ty;
+    let mut db_type = get_database_type_from_field_type(type_)?;
+    if is_identifier(field, fields) {
+        if db_type != "UUID" {
+            db_type = String::from("SERIAL PRIMARY KEY");
+        } else {
+            db_type += " PRIMARY KEY DEFAULT(uuid_generate_v4())";
+        }
+    }
 
     Ok(quote! {
         #[allow(unused)]
@@ -86,8 +94,36 @@ pub fn generate_table_column(field: &Field) -> Result<TokenStream2> {
             fn name() -> &'static str {
                 #name_string
             }
+            fn db_type() -> &'static str {
+                #db_type
+            }
         }
     })
+}
+
+pub fn get_database_type_from_field_type(t: &Type) -> Result<String> {
+    match t {
+        Type::Path(p) => {
+            if let Some(segment) = p.path.segments.iter().next() {
+                let ident_str: &str = &segment.ident.to_string();
+                match ident_str {
+                    "i32" | "u32" => return Ok(String::from("INT")),
+                    "String" => return Ok(String::from("TEXT")),
+                    _ => return Err(syn::Error::new(t.span(), format!("Could not determine database type for {:?}", ident_str)))
+                }
+            }
+        }
+        _ => {}
+    }
+    Err(syn::Error::new(t.span(), format!("Could not determine database type for {:?}", t)))
+}
+
+pub fn is_identifier(field: &Field, _fields: &[&Field]) -> bool {
+    if let Some(i) = &field.ident {
+        i == "id"
+    } else {
+        false
+    }
 }
 
 pub fn generate_table_impl(obj: &ItemStruct, fields: &[&Field]) -> Result<TokenStream2> {

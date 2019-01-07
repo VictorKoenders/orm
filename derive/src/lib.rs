@@ -7,7 +7,7 @@ mod context;
 
 use proc_macro::TokenStream;
 
-#[proc_macro_derive(Table)]
+#[proc_macro_derive(Table, attributes(key, unique))]
 pub fn derive_table(item: TokenStream) -> TokenStream {
     let obj: syn::ItemStruct = syn::parse(item).expect("Could not parse table as a valid struct");
     crate::table::generate_implementation(&obj).expect("Could not generate table implementation")
