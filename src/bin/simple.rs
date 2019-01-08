@@ -8,6 +8,7 @@ use orm::{Context, DbSet, Table};
 pub struct User {
     pub id: i32,
     pub name: String,
+    pub age: Option<i8>,
 }
 
 #[derive(Context, Clone)]

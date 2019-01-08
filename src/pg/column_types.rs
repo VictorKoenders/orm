@@ -6,6 +6,7 @@ pub trait GetColumnType {
 
 macro_rules! impl_type {
     ($static_name:ident, $struct_name:ident, $($ty:ty),*) => {
+        #[derive(Debug)]
         pub struct $struct_name;
         impl ColumnType for $struct_name {
             fn to_type(&self) -> &'static str {
@@ -23,7 +24,7 @@ macro_rules! impl_type {
     }
 }
 
-impl_type!(TINYINT, TinyInt, i16, u16);
+impl_type!(TINYINT, TinyInt, i16, u16, i8, u8);
 impl_type!(INT, Int, i32, u32);
 impl_type!(TEXT, Text, String);
 

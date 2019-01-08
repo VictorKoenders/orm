@@ -1,13 +1,13 @@
-use crate::{Result, ColumnType, ColumnAttribute, Column};
+use crate::{Result, ColumnType, ColumnAttribute, Column, ToSql};
 
 pub trait Connection {
-    type ArgType;
     type QueryResult;
 
-    fn query(&self, str: &str, args: &[&Self::ArgType]) -> Result<Self::QueryResult>;
-    fn update_table_by_definition(&self, definition: &TableDefinition) -> Result<Option<TableDefinition>>;
+    fn query(&self, str: &str, args: &[&ToSql]) -> Result<Self::QueryResult>;
+    fn update_table_by_definition(&self, definition: &TableDefinition) -> Result<()>;
 }
 
+#[derive(Debug)]
 pub struct TableDefinition {
     pub name: &'static str,
     pub fields: Vec<TableDefinitionField>,
@@ -22,6 +22,7 @@ impl TableDefinition {
     }
 }
 
+#[derive(Debug)]
 pub struct TableDefinitionField {
     pub name: &'static str,
     pub type_: &'static ColumnType,

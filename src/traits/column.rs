@@ -7,11 +7,11 @@ pub trait Column {
     fn db_type_attributes() -> &'static [&'static ColumnAttribute];
 }
 
-pub trait ColumnType {
+pub trait ColumnType: std::fmt::Debug {
     fn to_type(&self) -> &str;
 }
 
-pub trait ColumnAttribute {
+pub trait ColumnAttribute: std::fmt::Debug {
     fn to_string(&self) -> String;
 }
 

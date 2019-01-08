@@ -1,7 +1,10 @@
 use crate::ColumnAttribute;
 
+#[derive(Debug)]
 pub struct Null;
+#[derive(Debug)]
 pub struct NotNull;
+#[derive(Debug)]
 pub struct PrimaryKey;
 
 impl ColumnAttribute for Null {
