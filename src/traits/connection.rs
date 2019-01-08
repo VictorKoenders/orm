@@ -1,4 +1,4 @@
-use crate::{Result, ColumnType, ColumnAttribute, Column, ToSql};
+use crate::{Column, ColumnAttribute, ColumnType, Result, ToSql};
 
 pub trait Connection {
     type QueryResult;
