@@ -1,9 +1,6 @@
 #![allow(unused_variables, unused_mut, unused_imports)]
 #![allow(proc_macro_derive_resolution_fallback)]
 
-#[macro_use]
-extern crate cfg_if;
-
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -16,15 +13,15 @@ mod table_builder;
 mod table_updater;
 mod traits;
 
-cfg_if! {
-    if #[cfg(feature = "pg")] {
-        mod pg;
-        pub use self::pg::*;
-    } else if #[cfg(feature = "sqlite")] {
-        mod sqlite;
-        pub use self::sqlite::*;
-    }
-}
+#[cfg(feature = "pg")]
+extern crate postgres;
+#[cfg(feature = "pg")]
+pub mod pg;
+
+#[cfg(feature = "sqlite")]
+extern crate rusqlite;
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
 
 pub use orm_derive::{Context, Table};
 

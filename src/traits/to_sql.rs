@@ -1,27 +1,54 @@
 use std::marker::PhantomData;
 
-cfg_if! {
-    if #[cfg(feature = "pg")] {
-        pub trait ToSql : postgres::types::ToSql {
-            fn as_pg_arg(&self) -> &postgres::types::ToSql
-                where Self: Sized{
-                self
+pub trait ToSql {
+    #[cfg(feature = "pg")]
+    fn as_pg_arg(self) -> Box<postgres::types::ToSql>;
+
+    #[cfg(feature = "sqlite")]
+    fn as_bindable(self) -> Box<rusqlite::types::ToSql>;
+}
+
+macro_rules! impl_to_sql {
+    ($ty:ty) => {
+        impl_to_sql!($ty, (pg), (sqlite));
+    };
+    ($ty:ty, (pg $($pg_ty:tt)*), (sqlite $($sqlite_ty:tt)*)) => {
+        impl ToSql for $ty {
+            #[cfg(feature = "pg")]
+            fn as_pg_arg(self) -> Box<postgres::types::ToSql> {
+                Box::new(self $($pg_ty)*)
             }
-        }
-    } else if #[cfg(feature = "sqlite")] {
-        pub trait ToSql : sqlite::Bindable {
-            fn as_bindable(&self) -> &sqlite {
-                self
+
+            #[cfg(feature = "sqlite")]
+            fn as_bindable(self) -> Box<rusqlite::types::ToSql> {
+                Box::new(self $($sqlite_ty)*)
             }
         }
     }
 }
 
-impl<T: ToSql> ToSql for Option<T> {}
+impl_to_sql!(u8, (pg as i16), (sqlite));
+impl_to_sql!(u16, (pg as i16), (sqlite));
+impl_to_sql!(u32, (pg as i32), (sqlite));
+impl_to_sql!(u64, (pg as i64), (sqlite as i64));
 
-impl ToSql for i8 {}
-impl ToSql for i16 {}
-impl ToSql for i32 {}
+impl_to_sql!(i8);
+impl_to_sql!(i16);
+impl_to_sql!(i32);
+impl_to_sql!(i64);
 
-impl ToSql for String {}
-impl<'a> ToSql for &'a str {}
+impl_to_sql!(Option<u8>, (pg.map(|i| i as i16)), (sqlite));
+impl_to_sql!(Option<u16>, (pg.map(|i| i as i16)), (sqlite));
+impl_to_sql!(Option<u32>, (pg.map(|i| i as i32)), (sqlite));
+impl_to_sql!(
+    Option<u64>,
+    (pg.map(|i| i as i64)),
+    (sqlite.map(|i| i as i64))
+);
+
+impl_to_sql!(Option<i8>);
+impl_to_sql!(Option<i16>);
+impl_to_sql!(Option<i32>);
+impl_to_sql!(Option<i64>);
+
+impl_to_sql!(String);
