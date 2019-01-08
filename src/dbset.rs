@@ -6,6 +6,16 @@ pub struct DbSet<T> {
     _marker: PhantomData<T>,
 }
 
+impl<T> Clone for DbSet<T> {
+    fn clone(&self) -> Self {
+        Self {
+            context: self.context.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+
 impl<T: Table> DbSet<T> {
     #[doc(hidden)]
     pub fn __new(context: InnerContext) -> DbSet<T> {
@@ -24,6 +34,10 @@ impl<T: Table> DbSet<T> {
             self.context.clone(),
         ));
         builder.get_results()
+    }
+
+    pub fn to_list(&self) -> Result<Vec<T>> {
+        self.get_results()
     }
 }
 

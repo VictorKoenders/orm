@@ -1,11 +1,11 @@
 use crate::{Connection, TableBuilder};
 
-pub struct TableUpdater<'a> {
-    pub conn: &'a mut Connection,
+pub struct TableUpdater<'a, T: Connection> {
+    pub conn: &'a mut T,
 }
 
-impl<'a> TableUpdater<'a> {
-    pub fn table<'b>(&'b self, name: &'b str) -> TableBuilder<'a, 'b> {
+impl<'a, T: Connection> TableUpdater<'a, T> {
+    pub fn table<'b>(&'b self, name: &'static str) -> TableBuilder<'a, 'b, T> {
         TableBuilder::new(name, self)
     }
 }

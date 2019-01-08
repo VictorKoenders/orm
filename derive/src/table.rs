@@ -67,19 +67,26 @@ pub fn generate_query_builder_definition(fields: &[Field]) -> Result<TokenStream
 pub fn generate_table_column(field: &Field) -> Result<TokenStream2> {
     let name_string = &field.name_string;
     let name = &field.name_upper;
-    let type_ = &field.code_type;
-    let db_type = format!("{} {}", field.db_type, field.db_type_attributes.join(" "));
+    let code_type = &field.code_type;
+    let db_type = &field.db_type;
+    let db_type_attributes = &field.db_type_attributes;
 
     Ok(quote! {
         #[allow(unused)]
         pub struct #name;
         impl orm::Column for #name {
-            type Type = #type_;
+            type Type = #code_type;
             fn name() -> &'static str {
                 #name_string
             }
-            fn db_type() -> &'static str {
-                #db_type
+            fn db_type() -> &'static orm::ColumnType {
+                use orm::GetColumnType;
+                #db_type::get_column_type()
+            }
+            fn db_type_attributes() -> &'static [&'static orm::ColumnAttribute] {
+                &[
+                    #(&orm::#db_type_attributes,)*
+                ]
             }
         }
     })
@@ -114,7 +121,7 @@ pub fn generate_table_impl(obj: &Table, fields: &[Field]) -> Result<TokenStream2
                 #database_name
             }
 
-            fn update_database_schema(updater: &mut orm::TableUpdater) -> orm::Result<()> {
+            fn update_database_schema<T: orm::Connection>(updater: &mut orm::TableUpdater<T>) -> orm::Result<()> {
                 updater.table(#database_name)
                     #(
                         #updater_columns

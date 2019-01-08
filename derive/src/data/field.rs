@@ -9,8 +9,8 @@ pub struct Field {
     pub name_upper_t: Ident,
 
     pub code_type: Type,
-    pub db_type: String,
-    pub db_type_attributes: Vec<String>,
+    pub db_type: Type,
+    pub db_type_attributes: Vec<Ident>,
 }
 
 impl Field {
@@ -26,9 +26,10 @@ impl Field {
 
         let code_type = f.ty.clone();
 
-        // TODO: Figure out the field type and attributes
-        let db_type = "TEXT".to_owned();
-        let db_type_attributes = vec!["NOT NULL".to_owned()];
+        let db_type = code_type.clone();
+        let db_type_attributes = vec![
+            Ident::new("NotNull", f.span())
+        ];
 
         Ok(Field {
             name_string,

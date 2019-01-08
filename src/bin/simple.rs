@@ -10,7 +10,7 @@ pub struct User {
     pub name: String,
 }
 
-#[derive(Context)]
+#[derive(Context, Clone)]
 pub struct DbContext {
     pub users: DbSet<User>,
 }

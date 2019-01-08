@@ -1,77 +1,29 @@
-use crate::{Column, Result, TableUpdater, ToSql, ToSqlTypeName};
+use crate::{Column, Result, TableUpdater, ToSql, ToSqlTypeName, ColumnType, ColumnAttribute, Connection, TableDefinition, TableDefinitionField};
 use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
 
-pub struct TableBuilder<'a, 'b> {
-    name: &'b str,
-    fields: HashMap<String, &'static str>,
-    updater: &'b TableUpdater<'a>,
+pub struct TableBuilder<'a, 'b, T: Connection> {
+    definition: TableDefinition,
+    updater: &'a TableUpdater<'b, T>,
 }
 
-impl<'a, 'b> TableBuilder<'a, 'b> {
-    pub fn new(name: &'b str, updater: &'b TableUpdater<'a>) -> TableBuilder<'a, 'b> {
+impl<'a, 'b, T: Connection> TableBuilder<'a, 'b, T> {
+    pub fn new(name: &'static str, updater: &'a TableUpdater<'b, T>) -> TableBuilder<'a, 'b, T> {
         TableBuilder {
-            name,
-            fields: HashMap::new(),
+            definition: TableDefinition::new(name),
             updater,
         }
     }
 
-    pub fn column<T: Column>(mut self, _column: T) -> Self
+    pub fn column<COL: Column>(mut self, _column: COL) -> Self
     {
-        self.fields.insert(T::name().to_owned(), T::db_type());
+        self.definition.fields.push(TableDefinitionField::new::<COL>());
         self
     }
 
     pub fn build(mut self) -> Result<()> {
-        let result = self.updater.conn.query(TABLE_COLUMN_QUERY, &[&self.name])?;
-        if result.is_empty() {
-            println!("Creating new table {:?}", self.name);
-            let query = CREATE_TABLE_QUERY.replace("$1", &self.name);
-            println!("{}", query);
-            self.updater.conn.query(&query, &[])?;
-        } else {
-            println!("Updating table {:?}", self.name);
-
-            for row in result.iter() {
-                let name: String = row.get(0);
-                let old_type: String = row.get(1);
-
-                match self.fields.entry(name) {
-                    Entry::Occupied(o) => {
-                        let (name, new_type) = o.remove_entry();
-                        println!(
-                            "Field {} already exists! (Type: {} -> {})",
-                            name, old_type, new_type,
-                        );
-                    }
-                    Entry::Vacant(e) => {
-                        println!("Column {:?} found in DB but not locally, ignoring", e.key());
-                    }
-                }
-            }
-        }
-
-        for (name, new_type) in self.fields.into_iter() {
-            println!("Creating column {} ({})", name, new_type);
-            let query = CREATE_COLUMN_QUERY
-                .replace("$1", self.name)
-                .replace("$2", &name)
-                .replace("$3", new_type);
-            println!("{}", query);
-            self.updater.conn.query(&query, &[])?;
-        }
-
-        println!("Done updating table {}", self.name);
-
+        self.updater.conn.update_table_by_definition(&self.definition)?;
         Ok(())
     }
 }
 
-const TABLE_COLUMN_QUERY: &str = r#"SELECT
-	column_name, data_type
-FROM information_schema.columns
-WHERE table_name = $1"#;
-
-const CREATE_TABLE_QUERY: &str = "CREATE TABLE \"$1\"()";
-const CREATE_COLUMN_QUERY: &str = "ALTER TABLE \"$1\" ADD COLUMN \"$2\" $3";
