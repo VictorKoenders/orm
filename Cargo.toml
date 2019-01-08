@@ -5,7 +5,7 @@ name = "orm"
 version = "0.1.0"
 
 [features]
-default = ["pg", "sqlite"]
+default = ["pg"]
 pg = ["postgres"]
 sqlite = ["rusqlite"]
 

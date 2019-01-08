@@ -1,5 +1,7 @@
 mod as_query_filter;
 mod column;
+mod column_type_attributes;
+mod column_types;
 mod connection;
 mod context;
 mod equals;
@@ -12,6 +14,8 @@ mod to_sql_type_name;
 
 pub use self::as_query_filter::*;
 pub use self::column::*;
+pub use self::column_type_attributes::*;
+pub use self::column_types::*;
 pub use self::connection::*;
 pub use self::context::*;
 pub use self::equals::*;

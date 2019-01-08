@@ -8,10 +8,11 @@ pub trait Column {
 }
 
 pub trait ColumnType: std::fmt::Debug {
-    fn to_type(&self) -> &str;
+    fn pg_type(&self) -> &str;
+    fn sqlite_type(&self) -> &str;
 }
 
 pub trait ColumnAttribute: std::fmt::Debug {
-    fn to_string(&self) -> String;
+    fn to_pg_string(&self) -> String;
+    fn to_sqlite_string(&self) -> String;
 }
-

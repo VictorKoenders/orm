@@ -16,6 +16,7 @@ macro_rules! impl_to_sql {
         impl ToSql for $ty {
             #[cfg(feature = "pg")]
             fn as_pg_arg(self) -> Box<postgres::types::ToSql> {
+                #[allow(clippy::cast_lossless)]
                 Box::new(self $($pg_ty)*)
             }
 
