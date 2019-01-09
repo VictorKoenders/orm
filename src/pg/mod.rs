@@ -35,6 +35,9 @@ impl QueryBinder for PgQueryBinder {
 
     fn execute<T>(self) -> Result<T> {
         println!("Executing {:?} with args {:?}", self.query, self.args);
+
+        let args: Vec<_> = self.args.iter().map(|a| a.as_ref()).collect();
+        self.conn.query(&self.query, &args)?;
         unimplemented!()
     }
 }
