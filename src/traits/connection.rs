@@ -1,9 +1,9 @@
 use crate::{Column, ColumnAttribute, ColumnType, Result, ToSql};
 
 pub trait Connection {
-    type QueryResult;
+    type QueryBinder: QueryBinder;
 
-    fn query(&self, str: &str, args: &[&ToSql]) -> Result<Self::QueryResult>;
+    fn query(&self, str: &str) -> Self::QueryBinder;
     fn update_table_by_definition(&self, definition: &TableDefinition) -> Result<()>;
 }
 
@@ -42,3 +42,9 @@ impl TableDefinitionField {
         }
     }
 }
+
+pub trait QueryBinder {
+    fn bind<T: ToSql>(&mut self, t: T);
+    fn execute<T>(self) -> Result<T>;
+}
+

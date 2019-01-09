@@ -1,17 +1,40 @@
-use crate::{Connection, Result, TableDefinition, ToSql};
+use crate::{Connection as ConnectionTrait, Result, TableDefinition, ToSql, QueryBinder};
+use std::rc::Rc;
 
-impl<'a> Connection for postgres::transaction::Transaction<'a> {
-    type QueryResult = postgres::rows::Rows;
+pub struct Connection {
+    conn: Rc<postgres::Connection>,
+}
 
-    fn query(&self, str: &str, args: &[&ToSql]) -> Result<Self::QueryResult> {
-        let args = args.iter().map(|a| a.as_pg_arg()).collect::<Vec<_>>();
-        let args: Vec<&postgres::types::ToSql> =
-            args.iter().map(|a| a.as_ref()).collect::<Vec<_>>();
-        self.query(str, &args).map_err(Into::into)
+impl ConnectionTrait for Connection {
+    type QueryBinder = PgQueryBinder;
+
+    fn query(&self, str: &str) -> PgQueryBinder {
+        PgQueryBinder {
+            conn: Rc::clone(&self.conn),
+            query: str.to_owned(),
+            args: Vec::new(),
+        }
     }
 
     fn update_table_by_definition(&self, definition: &TableDefinition) -> Result<()> {
         println!("Updating table {:#?}", definition);
         unimplemented!();
+    }
+}
+
+pub struct PgQueryBinder {
+    conn: Rc<postgres::Connection>,
+    query: String,
+    args: Vec<Box<postgres::types::ToSql>>,
+}
+
+impl QueryBinder for PgQueryBinder {
+    fn bind<T: ToSql>(&mut self, t: T) {
+        self.args.push(t.to_pg_sql());
+    }
+
+    fn execute<T>(self) -> Result<T> {
+        println!("Executing {:?} with args {:?}", self.query, self.args);
+        unimplemented!()
     }
 }

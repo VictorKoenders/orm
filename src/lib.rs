@@ -1,6 +1,9 @@
 #![allow(unused_variables, unused_mut, unused_imports)]
 #![allow(proc_macro_derive_resolution_fallback)]
 
+#[macro_use]
+extern crate cfg_if;
+
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
