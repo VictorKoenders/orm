@@ -1,0 +1,10 @@
+[package]
+name = "db_postgres"
+version = "0.1.0"
+authors = ["Trangar <victor.koenders@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+pq-sys = "0.4"
+db_core = { path = "../db_core" }
+
