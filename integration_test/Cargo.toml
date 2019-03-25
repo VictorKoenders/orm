@@ -5,3 +5,5 @@ authors = ["Trangar <victor.koenders@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+db_core = { path = "../db_core" }
+db_postgres = { path = "../db_postgres" }

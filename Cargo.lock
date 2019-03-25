@@ -75,6 +75,10 @@ dependencies = [
 [[package]]
 name = "integration_test"
 version = "0.1.0"
+dependencies = [
+ "db_core 0.1.0",
+ "db_postgres 0.1.0",
+]
 
 [[package]]
 name = "libc"

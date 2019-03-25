@@ -4,6 +4,7 @@ pub struct QueryBuilder<'a> {
     pub table: Cow<'a, str>,
     pub joined_tables: Vec<TableJoin<'a>>,
     pub select: Vec<Field<'a>>,
+    pub criteria: Vec<Criteria<'a>>,
 }
 
 pub trait EstimateStrLen {
@@ -60,7 +61,12 @@ impl EstimateStrLen for FieldOrArgument<'_> {
     }
 }
 
-pub trait Argument<'a>: EstimateStrLen {}
+pub trait Argument<'a> {
+    fn estimate_str_len(&self) -> usize { 0 }
+}
+
+impl<'a> Argument<'a> for i32 {
+}
 
 pub struct TableJoin<'a> {
     pub joined_table: Cow<'a, str>,
@@ -103,6 +109,21 @@ pub enum Comparison<'a> {
     NotEqualTo,
     Like,
     Custom(Cow<'a, str>),
+}
+
+impl<'a> Comparison<'a> {
+    pub fn as_query_str(&'a self) -> &'a str {
+        match self {
+            Comparison::EqualTo => "=",
+            Comparison::GreaterThen => ">",
+            Comparison::GreaterOrEqualTo => ">=",
+            Comparison::LesserThen => "<",
+            Comparison::LesserOrEqualTo => "<=",
+            Comparison::NotEqualTo => "!=",
+            Comparison::Like => " LIKE ",
+            Comparison::Custom(s) => &s,
+        }
+    }
 }
 
 impl EstimateStrLen for Comparison<'_> {
