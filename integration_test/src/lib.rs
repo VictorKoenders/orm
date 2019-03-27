@@ -1,8 +1,10 @@
 #[test]
 pub fn test_pg_query() {
     use db_postgres::ConnectionTrait;
+    use db_core::QueryResult;
+
     let conn = db_postgres::Connection::connect("postgres://trangar:Development@localhost/test").unwrap();
-    conn.execute(db_core::QueryBuilder {
+    let query_builder = db_core::QueryBuilder {
         table: "user".into(),
         joined_tables: Vec::new(),
         select: vec![
@@ -33,6 +35,8 @@ pub fn test_pg_query() {
                 comparison: db_core::Comparison::EqualTo,
             }
         ]
-    })
-    .expect("OK");
+    };
+    let mut result = conn.execute(query_builder).expect("OK");
+    println!("{}", result.error_message());
+    println!("Result len: {:?}", result.len());
 }

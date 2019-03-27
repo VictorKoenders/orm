@@ -1,7 +1,10 @@
-use db_core::failure::bail;
-pub use db_core::{Connection as ConnectionTrait, EstimateStrLen, Result};
+use db_core::failure::{bail, format_err};
+pub use db_core::{Connection as ConnectionTrait, EstimateStrLen, Result, ReadType};
 use pq_sys::*;
 use std::ffi::{CStr, CString};
+use std::os::raw;
+use std::ptr::NonNull;
+use std::marker::PhantomData;
 
 pub struct Connection(*mut PGconn);
 
@@ -12,7 +15,7 @@ const COLUMN_ALIAS: &str = " AS ";
 
 impl<'a> db_core::Connection<'a> for Connection {
     type ConnectionParam = &'a str;
-    type Row = Row<'a>;
+    type QueryResult = QueryResult<'a>;
 
     fn connect(database_url: &'a str) -> Result<Connection> {
         let connection_string = CString::new(database_url)?;
@@ -30,13 +33,45 @@ impl<'a> db_core::Connection<'a> for Connection {
         Ok(Connection(connection_ptr))
     }
 
-    fn execute(&self, builder: db_core::QueryBuilder<'a>) -> Result<Vec<Row<'a>>> {
+    fn execute(&self, builder: db_core::QueryBuilder<'a>) -> Result<QueryResult<'a>> {
         let query = build_query(&builder);
-        let _params = get_query_parameters(&builder);
+        let params = get_query_parameters(&builder);
+        let params = params.into_iter().map(|p| {
+            let str = p.to_query_string();
+            CString::new(str).map_err(Into::into)
+        }).collect::<Result<Vec<CString>>>()?;
 
         println!("Query: {}", query);
+        println!("Parameters: {:?}", params);
+    
+        let param_ptrs = params.iter().map(|c| c.as_ptr()).collect::<Vec<*const raw::c_char>>();
+        let query = CString::new(query)?;
 
-        unimplemented!()
+        let result = unsafe {
+            PQexecParams(
+                self.0,                             // conn: *mut PGconn
+                query.as_ptr(),                     // command: *const c_char
+                param_ptrs.len() as raw::c_int,     // nParams: c_int
+                std::ptr::null(),                   // paramTypes: *const Oid
+                param_ptrs.as_ptr(),                // paramValues: *const *const c_char
+                std::ptr::null(),                   // paramLengths: *const c_int
+                std::ptr::null(),                   // paramFormats: *const c_int
+                0                                   // resultFormat: c_int (0 = plain text, 1 = binary)
+            )
+        };
+
+        match NonNull::new(result) {
+            Some(ptr) => {
+                Ok(QueryResult::new(ptr))
+            },
+            None => {
+                Err(format_err!("Could not execute query: {}", unsafe {
+                    let error_ptr = PQerrorMessage(self.0);
+                    let bytes = CStr::from_ptr(error_ptr).to_bytes();
+                    std::str::from_utf8_unchecked(bytes)
+                }))
+            }
+        }
     }
 }
 
@@ -116,15 +151,76 @@ impl Drop for Connection {
     }
 }
 
+pub struct QueryResult<'a> {
+    ptr: NonNull<PGresult>,
+    len: usize,
+    _pd: PhantomData<&'a ()>,
+}
+
+impl QueryResult<'_> {
+    fn new(ptr: NonNull<PGresult>) -> QueryResult<'static> {
+        QueryResult {
+            ptr,
+            len: unsafe { PQntuples(ptr.as_ptr())  } as usize,
+            _pd: PhantomData
+        }
+    }
+
+    pub fn error_message(&self) -> &str {
+        let ptr = unsafe { PQresultErrorMessage(self.ptr.as_ptr()) };
+        let cstr = unsafe { CStr::from_ptr(ptr) };
+        cstr.to_str().unwrap_or_default()
+    }
+}
+
+impl<'a> db_core::QueryResult<'a> for QueryResult<'a> {
+    type Row = Row<'a>;
+
+    fn len(&mut self) -> Result<usize> {
+        Ok(self.len)
+    }
+
+    fn get_row(&mut self, index: usize) -> Result<Row> {
+        Ok(Row {
+            result: unsafe { self.ptr.as_ref() },
+            row_index: index
+        })
+    }
+}
+
+impl Drop for QueryResult<'_> {
+    fn drop(&mut self) {
+        unsafe { PQclear(self.ptr.as_ptr()) }
+    }
+}
+
 pub struct Row<'a> {
-    _result: &'a PGresult,
+    result: &'a PGresult,
+    row_index: usize,
 }
 
 impl<'a> db_core::Row for Row<'a> {
-    fn read_string_at_index(&mut self, _index: usize) -> Result<String> {
-        unimplemented!()
+    fn read_at_index<T: ReadType>(&mut self, index: usize) -> Result<T> {
+        let row_index = self.row_index as i32;
+        let index = index as i32;
+        if unsafe { PQgetisnull(self.result, row_index, index) } != 0 {
+            T::from_pq_bytes(None)
+        } else {
+            let slice = unsafe {
+                let ptr = PQgetvalue(self.result, row_index, index) as *const u8;
+                let len = PQgetlength(self.result, row_index, index);
+                std::slice::from_raw_parts(ptr, len as usize)
+            };
+            T::from_pq_bytes(Some(slice))
+        }
     }
-    fn read_string_by_name(&mut self, _name: &str) -> Result<String> {
-        unimplemented!()
+    fn read_by_name<T: ReadType>(&mut self, name: &str) -> Result<T> {
+        let cstr = CString::new(name).unwrap_or_default();
+        let fnum = unsafe { PQfnumber(self.result, cstr.as_ptr()) };
+        match fnum {
+            -1 => Err(format_err!("Field {:?} not found", name)),
+            x => self.read_at_index(x as usize),
+        }
     }
 }
+
