@@ -1,5 +1,5 @@
-use std::borrow::Cow;
 use crate::Result;
+use std::borrow::Cow;
 
 pub struct QueryBuilder<'a> {
     pub table: Cow<'a, str>,
@@ -63,13 +63,19 @@ impl EstimateStrLen for FieldOrArgument<'_> {
 }
 
 pub trait Argument<'a> {
-    fn estimate_str_len(&self) -> usize { 0 }
+    fn estimate_str_len(&self) -> usize {
+        0
+    }
     fn to_query_string(&self) -> String;
-    fn try_parse_from_query(str: &str) -> Result<Self> where Self: Sized;
+    fn try_parse_from_query(str: &str) -> Result<Self>
+    where
+        Self: Sized;
 }
 
 impl<'a> Argument<'a> for i32 {
-    fn to_query_string(&self) -> String { self.to_string() }
+    fn to_query_string(&self) -> String {
+        self.to_string()
+    }
     fn try_parse_from_query(str: &str) -> Result<Self> {
         str.parse().map_err(Into::into)
     }

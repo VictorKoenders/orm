@@ -1,10 +1,10 @@
 use db_core::failure::{bail, format_err};
-pub use db_core::{Connection as ConnectionTrait, EstimateStrLen, Result, ReadType};
+pub use db_core::{Connection as ConnectionTrait, EstimateStrLen, ReadType, Result};
 use pq_sys::*;
 use std::ffi::{CStr, CString};
+use std::marker::PhantomData;
 use std::os::raw;
 use std::ptr::NonNull;
-use std::marker::PhantomData;
 
 pub struct Connection(*mut PGconn);
 
@@ -36,52 +36,54 @@ impl<'a> db_core::Connection<'a> for Connection {
     fn execute(&self, builder: db_core::QueryBuilder<'a>) -> Result<QueryResult<'a>> {
         let query = build_query(&builder);
         let params = get_query_parameters(&builder);
-        let params = params.into_iter().map(|p| {
-            let str = p.to_query_string();
-            CString::new(str).map_err(Into::into)
-        }).collect::<Result<Vec<CString>>>()?;
+        let params = params
+            .into_iter()
+            .map(|p| {
+                let str = p.to_query_string();
+                CString::new(str).map_err(Into::into)
+            })
+            .collect::<Result<Vec<CString>>>()?;
 
         println!("Query: {}", query);
         println!("Parameters: {:?}", params);
-    
-        let param_ptrs = params.iter().map(|c| c.as_ptr()).collect::<Vec<*const raw::c_char>>();
+
+        let param_ptrs = params
+            .iter()
+            .map(|c| c.as_ptr())
+            .collect::<Vec<*const raw::c_char>>();
         let query = CString::new(query)?;
 
         let result = unsafe {
             PQexecParams(
-                self.0,                             // conn: *mut PGconn
-                query.as_ptr(),                     // command: *const c_char
-                param_ptrs.len() as raw::c_int,     // nParams: c_int
-                std::ptr::null(),                   // paramTypes: *const Oid
-                param_ptrs.as_ptr(),                // paramValues: *const *const c_char
-                std::ptr::null(),                   // paramLengths: *const c_int
-                std::ptr::null(),                   // paramFormats: *const c_int
-                0                                   // resultFormat: c_int (0 = plain text, 1 = binary)
+                self.0,                         // conn: *mut PGconn
+                query.as_ptr(),                 // command: *const c_char
+                param_ptrs.len() as raw::c_int, // nParams: c_int
+                std::ptr::null(),               // paramTypes: *const Oid
+                param_ptrs.as_ptr(),            // paramValues: *const *const c_char
+                std::ptr::null(),               // paramLengths: *const c_int
+                std::ptr::null(),               // paramFormats: *const c_int
+                0,                              // resultFormat: c_int (0 = plain text, 1 = binary)
             )
         };
 
         match NonNull::new(result) {
-            Some(ptr) => {
-                Ok(QueryResult::new(ptr))
-            },
-            None => {
-                Err(format_err!("Could not execute query: {}", unsafe {
-                    let error_ptr = PQerrorMessage(self.0);
-                    let bytes = CStr::from_ptr(error_ptr).to_bytes();
-                    std::str::from_utf8_unchecked(bytes)
-                }))
-            }
+            Some(ptr) => Ok(QueryResult::new(ptr)),
+            None => Err(format_err!("Could not execute query: {}", unsafe {
+                let error_ptr = PQerrorMessage(self.0);
+                let bytes = CStr::from_ptr(error_ptr).to_bytes();
+                std::str::from_utf8_unchecked(bytes)
+            })),
         }
     }
 }
 
 fn get_query_parameters<'a, 'b>(
     builder: &'a db_core::QueryBuilder<'b>,
-) -> Vec<&'a Box<db_core::Argument<'b>>> {
+) -> Vec<&'a db_core::Argument<'b>> {
     let mut result = Vec::with_capacity(builder.criteria.len());
     for criteria in &builder.criteria {
         if let db_core::FieldOrArgument::Argument(a) = &criteria.right {
-            result.push(a);
+            result.push(a.as_ref());
         }
     }
     result
@@ -102,7 +104,6 @@ fn append_field_to_query(query: &mut String, field: &db_core::Field) {
         *query += COLUMN_ALIAS;
         *query += &alias;
     }
-
 }
 
 fn build_query(builder: &db_core::QueryBuilder) -> String {
@@ -127,8 +128,11 @@ fn build_query(builder: &db_core::QueryBuilder) -> String {
     let mut argument_index = 1;
 
     for (index, criteria) in builder.criteria.iter().enumerate() {
-        if index == 0 { query += " WHERE "; }
-        else { query += " AND "; }
+        if index == 0 {
+            query += " WHERE ";
+        } else {
+            query += " AND ";
+        }
         append_field_to_query(&mut query, &criteria.left);
         query += criteria.comparison.as_query_str();
 
@@ -161,8 +165,8 @@ impl QueryResult<'_> {
     fn new(ptr: NonNull<PGresult>) -> QueryResult<'static> {
         QueryResult {
             ptr,
-            len: unsafe { PQntuples(ptr.as_ptr())  } as usize,
-            _pd: PhantomData
+            len: unsafe { PQntuples(ptr.as_ptr()) } as usize,
+            _pd: PhantomData,
         }
     }
 
@@ -183,7 +187,7 @@ impl<'a> db_core::QueryResult<'a> for QueryResult<'a> {
     fn get_row(&mut self, index: usize) -> Result<Row> {
         Ok(Row {
             result: unsafe { self.ptr.as_ref() },
-            row_index: index
+            row_index: index,
         })
     }
 }
@@ -223,4 +227,3 @@ impl<'a> db_core::Row for Row<'a> {
         }
     }
 }
-

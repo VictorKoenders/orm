@@ -87,4 +87,3 @@ pub struct ForeignKey<'a> {
     pub table: Cow<'a, str>,
     pub column: Cow<'a, str>,
 }
-
