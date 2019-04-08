@@ -96,7 +96,6 @@ impl<'a> Argument<'a> for String {
     //}
 }
 
-
 impl<'a> Argument<'a> for str {
     fn estimate_str_len(&self) -> usize {
         self.len()

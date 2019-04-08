@@ -12,21 +12,16 @@ pub trait ReadType: Sized {
 
 impl ReadType for bool {
     fn from_pq_bytes(b: Option<&[u8]>) -> Result<Self> {
-        match b.map(std::str::from_utf8) {
-            Some(Ok(s)) => Ok(s == "YES"),
-            Some(Err(e)) => failure::bail!("UTF8 str {:?} is invalid: {:?}", b.unwrap(), e),
-            None => failure::bail!("Could not load NULL value into non-nullable bool"),
+        if let Some(last_byte) = b.and_then(|b| b.last()) {
+            return Ok(*last_byte > 0)
         }
+        failure::bail!("Could not load NULL value into non-nullable bool")
     }
 }
 
 impl ReadType for Option<bool> {
     fn from_pq_bytes(b: Option<&[u8]>) -> Result<Self> {
-        match b.map(std::str::from_utf8) {
-            Some(Ok(s)) => Ok(Some(s == "YES")),
-            Some(Err(e)) => failure::bail!("UTF8 str {:?} is invalid: {:?}", b.unwrap(), e),
-            None => Ok(None),
-        }
+        Ok(b.and_then(|b| b.last()).map(|last_byte| *last_byte > 0))
     }
 }
 
@@ -48,4 +43,3 @@ impl ReadType for Option<String> {
         }
     }
 }
-

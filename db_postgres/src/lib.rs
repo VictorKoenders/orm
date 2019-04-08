@@ -3,7 +3,7 @@ pub use db_core::database_updater::DatabaseUpdater;
 use db_core::failure::{bail, format_err};
 pub use db_core::query_builder::EstimateStrLen;
 pub use db_core::row::ReadType;
-pub use db_core::table_builder::{Column, ColumnDefault, ColumnType, Table, ColumnFlags};
+pub use db_core::table_builder::{Column, ColumnDefault, ColumnFlags, ColumnType, Table};
 pub use db_core::Result;
 use pq_sys::*;
 use std::ffi::{CStr, CString};
@@ -109,7 +109,7 @@ impl<'a> ConnectionTrait<'a> for Connection {
     table_name,
     column_name,
     column_default,
-    is_nullable,
+    CAST(CASE WHEN is_nullable = 'YES' THEN 1 ELSE 0 END as bool) AS is_nullable,
     udt_name
 FROM information_schema.columns
 WHERE table_schema = $1

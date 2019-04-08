@@ -37,7 +37,7 @@ pub fn test_pg_query() {
     });
 
     // database_updater.update_schema().expect("Could not update schema");
-    
+
     let query_builder = db_core::query_builder::QueryBuilder {
         table: "user".into(),
         joined_tables: Vec::new(),
@@ -64,9 +64,9 @@ pub fn test_pg_query() {
                 table: None,
                 alias: None,
             },
-            right: db_core::query_builder::FieldOrArgument::Argument(
-                Box::new(String::from("a4e52274-cf87-46f3-87fd-f22234064d1c"))
-            ),
+            right: db_core::query_builder::FieldOrArgument::Argument(Box::new(String::from(
+                "a4e52274-cf87-46f3-87fd-f22234064d1c",
+            ))),
             comparison: db_core::query_builder::Comparison::EqualTo,
         }],
     };
