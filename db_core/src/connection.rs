@@ -15,5 +15,9 @@ pub trait QueryResult<'a> {
     type Row: Row;
 
     fn len(&mut self) -> Result<usize>;
+    fn is_empty(&mut self) -> Result<bool> {
+        self.len().map(|l| l == 0)
+    }
+
     fn get_row(&'a self, index: usize) -> Result<Self::Row>;
 }

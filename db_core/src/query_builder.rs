@@ -1,3 +1,4 @@
+use crate::Result;
 use std::borrow::Cow;
 
 pub struct QueryBuilder<'a> {

@@ -261,7 +261,6 @@ pub struct QueryResult<'a> {
     ptr: NonNull<PGresult>,
     row_count: usize,
     column_count: usize,
-
     _pd: PhantomData<&'a ()>,
 }
 
