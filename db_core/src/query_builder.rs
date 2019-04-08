@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use crate::Result;
 
 pub struct QueryBuilder<'a> {
     pub table: Cow<'a, str>,
@@ -63,16 +62,62 @@ impl EstimateStrLen for FieldOrArgument<'_> {
 }
 
 pub trait Argument<'a> {
-    fn estimate_str_len(&self) -> usize { 0 }
+    fn estimate_str_len(&self) -> usize {
+        0
+    }
     fn to_query_string(&self) -> String;
-    fn try_parse_from_query(str: &str) -> Result<Self> where Self: Sized;
+    //fn try_parse_from_query(str: &str) -> Result<Self>
+    //where
+    //    Self: Sized;
 }
 
 impl<'a> Argument<'a> for i32 {
-    fn to_query_string(&self) -> String { self.to_string() }
-    fn try_parse_from_query(str: &str) -> Result<Self> {
-        str.parse().map_err(Into::into)
+    fn estimate_str_len(&self) -> usize {
+        (*self as f32).log10().ceil() as usize
     }
+    fn to_query_string(&self) -> String {
+        self.to_string()
+    }
+    //fn try_parse_from_query(str: &str) -> Result<Self> {
+    //    str.parse().map_err(Into::into)
+    //}
+}
+
+impl<'a> Argument<'a> for String {
+    fn estimate_str_len(&self) -> usize {
+        self.len()
+    }
+    fn to_query_string(&self) -> String {
+        self.clone()
+    }
+    //fn try_parse_from_query(str: &str) -> Result<Self> {
+    //    failure::bail!("Not implemented")
+    //}
+}
+
+
+impl<'a> Argument<'a> for str {
+    fn estimate_str_len(&self) -> usize {
+        self.len()
+    }
+    fn to_query_string(&self) -> String {
+        self.to_string()
+    }
+    //fn try_parse_from_query(str: &str) -> Result<Self> {
+    //    failure::bail!("Not implemented")
+    //}
+}
+
+impl<'a> Argument<'a> for &'a str {
+    fn estimate_str_len(&self) -> usize {
+        self.len()
+    }
+    fn to_query_string(&self) -> String {
+        self.to_string()
+    }
+    //fn try_parse_from_query(str: &str) -> Result<Self> {
+    //    failure::bail!("Not implemented")
+    //}
 }
 
 pub struct TableJoin<'a> {

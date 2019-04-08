@@ -1,10 +1,15 @@
+pub use db_core::connection::Connection as ConnectionTrait;
+pub use db_core::database_updater::DatabaseUpdater;
 use db_core::failure::{bail, format_err};
-pub use db_core::{Connection as ConnectionTrait, EstimateStrLen, Result, ReadType};
+pub use db_core::query_builder::EstimateStrLen;
+pub use db_core::row::ReadType;
+pub use db_core::table_builder::{Column, ColumnDefault, ColumnType, Table, ColumnFlags};
+pub use db_core::Result;
 use pq_sys::*;
 use std::ffi::{CStr, CString};
+use std::marker::PhantomData;
 use std::os::raw;
 use std::ptr::NonNull;
-use std::marker::PhantomData;
 
 pub struct Connection(*mut PGconn);
 
@@ -13,7 +18,62 @@ const TABLE_COLUMN_POSTFIX: &str = "\"";
 const TABLE_COLUMN_JOIN: &str = ".";
 const COLUMN_ALIAS: &str = " AS ";
 
-impl<'a> db_core::Connection<'a> for Connection {
+impl Connection {
+    fn execute_query(
+        &self,
+        query: &str,
+        params: &[&db_core::query_builder::Argument],
+    ) -> Result<QueryResult<'static>> {
+        let params = params
+            .into_iter()
+            .map(|p| {
+                let str = p.to_query_string();
+                CString::new(str).map_err(Into::into)
+            })
+            .collect::<Result<Vec<CString>>>()?;
+
+        println!("Query: \"{}\"", query);
+        println!("Params: {:?}", params);
+
+        let param_ptrs = params
+            .iter()
+            .map(|c| c.as_ptr())
+            .collect::<Vec<*const raw::c_char>>();
+        let query = CString::new(query)?;
+
+        let result = unsafe {
+            PQexecParams(
+                self.0,                         // conn: *mut PGconn
+                query.as_ptr(),                 // command: *const c_char
+                param_ptrs.len() as raw::c_int, // nParams: c_int
+                std::ptr::null(),               // paramTypes: *const Oid
+                param_ptrs.as_ptr(),            // paramValues: *const *const c_char
+                std::ptr::null(),               // paramLengths: *const c_int
+                std::ptr::null(),               // paramFormats: *const c_int
+                1,                              // resultFormat: c_int (0 = plain text, 1 = binary)
+            )
+        };
+
+        match NonNull::new(result) {
+            Some(ptr) => {
+                let result = QueryResult::new(ptr);
+                let error_message = result.error_message();
+                if !error_message.is_empty() {
+                    Err(format_err!("Could not execute query: {}", error_message))
+                } else {
+                    Ok(result)
+                }
+            }
+            None => Err(format_err!("Could not execute query: {}", unsafe {
+                let error_ptr = PQerrorMessage(self.0);
+                let bytes = CStr::from_ptr(error_ptr).to_bytes();
+                std::str::from_utf8_unchecked(bytes)
+            })),
+        }
+    }
+}
+
+impl<'a> ConnectionTrait<'a> for Connection {
     type ConnectionParam = &'a str;
     type QueryResult = QueryResult<'a>;
 
@@ -33,61 +93,103 @@ impl<'a> db_core::Connection<'a> for Connection {
         Ok(Connection(connection_ptr))
     }
 
-    fn execute(&self, builder: db_core::QueryBuilder<'a>) -> Result<QueryResult<'a>> {
+    fn execute(
+        &self,
+        builder: db_core::query_builder::QueryBuilder<'a>,
+    ) -> Result<QueryResult<'a>> {
         let query = build_query(&builder);
         let params = get_query_parameters(&builder);
-        let params = params.into_iter().map(|p| {
-            let str = p.to_query_string();
-            CString::new(str).map_err(Into::into)
-        }).collect::<Result<Vec<CString>>>()?;
+        self.execute_query(&query, &params)
+    }
 
-        println!("Query: {}", query);
-        println!("Parameters: {:?}", params);
-    
-        let param_ptrs = params.iter().map(|c| c.as_ptr()).collect::<Vec<*const raw::c_char>>();
-        let query = CString::new(query)?;
+    fn get_existing_schema(&'a self) -> Result<DatabaseUpdater<'a>> {
+        use db_core::connection::QueryResult;
+        use db_core::row::Row;
+        const COLUMN_QUERY: &str = r#"SELECT
+    table_name,
+    column_name,
+    column_default,
+    is_nullable,
+    udt_name
+FROM information_schema.columns
+WHERE table_schema = $1
+ORDER BY table_name"#;
 
-        let result = unsafe {
-            PQexecParams(
-                self.0,                             // conn: *mut PGconn
-                query.as_ptr(),                     // command: *const c_char
-                param_ptrs.len() as raw::c_int,     // nParams: c_int
-                std::ptr::null(),                   // paramTypes: *const Oid
-                param_ptrs.as_ptr(),                // paramValues: *const *const c_char
-                std::ptr::null(),                   // paramLengths: *const c_int
-                std::ptr::null(),                   // paramFormats: *const c_int
-                0                                   // resultFormat: c_int (0 = plain text, 1 = binary)
-            )
-        };
+        let mut result = self.execute_query(COLUMN_QUERY, &[&"public"])?;
+        let len = result.len()?;
+        println!("Found {} columns", result.len()?);
+        let mut tables = Vec::new();
+        let mut current_table: Option<Table> = None;
+        for i in 0..len {
+            let mut row = result.get_row(i)?;
 
-        match NonNull::new(result) {
-            Some(ptr) => {
-                Ok(QueryResult::new(ptr))
-            },
-            None => {
-                Err(format_err!("Could not execute query: {}", unsafe {
-                    let error_ptr = PQerrorMessage(self.0);
-                    let bytes = CStr::from_ptr(error_ptr).to_bytes();
-                    std::str::from_utf8_unchecked(bytes)
-                }))
+            let table_name: String = row.read_at_index(0)?;
+            let table: &mut Table = {
+                let table_name_equals =
+                    current_table.as_ref().map(|t| t.name.as_ref()) == Some(&table_name);
+
+                // If the table name doesn't match, but we have a table, clear the current table
+                // and add it to the `tables` vec
+                if current_table.is_some() && !table_name_equals {
+                    // we checked that current_table.is_some(), so this unwrap is safe
+                    let table = current_table.take().unwrap();
+                    tables.push(table);
+                }
+                current_table.get_or_insert_with(|| Table::with_name(table_name))
+            };
+
+            let column_name: String = row.read_at_index(1)?;
+            let column_default: Option<String> = row.read_at_index(2)?;
+            let column_nullable: bool = row.read_at_index(3)?;
+            let column_type: String = row.read_at_index(4)?;
+
+            let mut column = Column::with_name(column_name);
+            if let Some(default) = column_default {
+                column.default = Some(ColumnDefault::Custom(default.into()));
             }
+            column.r#type = type_string_to_column_type(column_type);
+            if !column_nullable {
+                column.flags |= ColumnFlags::NOT_NULL;
+            }
+
+            table.columns.push(column);
+        }
+        if let Some(table) = current_table.take() {
+            tables.push(table);
+        }
+
+        println!("{:?}", tables);
+
+        Ok(DatabaseUpdater::from_old_definition(tables))
+    }
+}
+
+fn type_string_to_column_type(s: String) -> ColumnType<'static> {
+    match s.as_str() {
+        "text" | "name" => ColumnType::Text(None),
+        "int4" => ColumnType::Int,
+        "timestamptz" => ColumnType::Custom("TIMESTAMPTZ".into()),
+        "uuid" => ColumnType::Custom("UUID".into()),
+        _ => {
+            println!("Unknown type: {:?}", s);
+            ColumnType::Custom(s.into())
         }
     }
 }
 
 fn get_query_parameters<'a, 'b>(
-    builder: &'a db_core::QueryBuilder<'b>,
-) -> Vec<&'a Box<db_core::Argument<'b>>> {
+    builder: &'a db_core::query_builder::QueryBuilder<'b>,
+) -> Vec<&'a db_core::query_builder::Argument<'b>> {
     let mut result = Vec::with_capacity(builder.criteria.len());
     for criteria in &builder.criteria {
-        if let db_core::FieldOrArgument::Argument(a) = &criteria.right {
-            result.push(a);
+        if let db_core::query_builder::FieldOrArgument::Argument(a) = &criteria.right {
+            result.push(a.as_ref());
         }
     }
     result
 }
 
-fn append_field_to_query(query: &mut String, field: &db_core::Field) {
+fn append_field_to_query(query: &mut String, field: &db_core::query_builder::Field) {
     if let Some(table) = &field.table {
         *query += TABLE_COLUMN_PREFIX;
         *query += &table;
@@ -102,10 +204,9 @@ fn append_field_to_query(query: &mut String, field: &db_core::Field) {
         *query += COLUMN_ALIAS;
         *query += &alias;
     }
-
 }
 
-fn build_query(builder: &db_core::QueryBuilder) -> String {
+fn build_query(builder: &db_core::query_builder::QueryBuilder) -> String {
     let mut query = String::with_capacity(builder.estimate_str_len() * 2);
     query += "SELECT ";
     if builder.select.is_empty() {
@@ -127,14 +228,19 @@ fn build_query(builder: &db_core::QueryBuilder) -> String {
     let mut argument_index = 1;
 
     for (index, criteria) in builder.criteria.iter().enumerate() {
-        if index == 0 { query += " WHERE "; }
-        else { query += " AND "; }
+        if index == 0 {
+            query += " WHERE ";
+        } else {
+            query += " AND ";
+        }
         append_field_to_query(&mut query, &criteria.left);
         query += criteria.comparison.as_query_str();
 
         match &criteria.right {
-            db_core::FieldOrArgument::Field(f) => append_field_to_query(&mut query, f),
-            db_core::FieldOrArgument::Argument(_) => {
+            db_core::query_builder::FieldOrArgument::Field(f) => {
+                append_field_to_query(&mut query, f)
+            }
+            db_core::query_builder::FieldOrArgument::Argument(_) => {
                 query += "$";
                 query += &argument_index.to_string();
                 argument_index += 1;
@@ -153,7 +259,9 @@ impl Drop for Connection {
 
 pub struct QueryResult<'a> {
     ptr: NonNull<PGresult>,
-    len: usize,
+    row_count: usize,
+    column_count: usize,
+
     _pd: PhantomData<&'a ()>,
 }
 
@@ -161,8 +269,9 @@ impl QueryResult<'_> {
     fn new(ptr: NonNull<PGresult>) -> QueryResult<'static> {
         QueryResult {
             ptr,
-            len: unsafe { PQntuples(ptr.as_ptr())  } as usize,
-            _pd: PhantomData
+            row_count: unsafe { PQntuples(ptr.as_ptr()) } as usize,
+            column_count: unsafe { PQnfields(ptr.as_ptr()) } as usize,
+            _pd: PhantomData,
         }
     }
 
@@ -173,17 +282,18 @@ impl QueryResult<'_> {
     }
 }
 
-impl<'a> db_core::QueryResult<'a> for QueryResult<'a> {
+impl<'a> db_core::connection::QueryResult<'a> for QueryResult<'a> {
     type Row = Row<'a>;
 
     fn len(&mut self) -> Result<usize> {
-        Ok(self.len)
+        Ok(self.row_count)
     }
 
-    fn get_row(&mut self, index: usize) -> Result<Row> {
+    fn get_row(&self, index: usize) -> Result<Row> {
         Ok(Row {
             result: unsafe { self.ptr.as_ref() },
-            row_index: index
+            row_index: index,
+            column_count: self.column_count,
         })
     }
 }
@@ -197,9 +307,23 @@ impl Drop for QueryResult<'_> {
 pub struct Row<'a> {
     result: &'a PGresult,
     row_index: usize,
+    column_count: usize,
 }
 
-impl<'a> db_core::Row for Row<'a> {
+impl Row<'_> {
+    pub fn len(&self) -> usize {
+        self.column_count
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    pub fn name_of_index(&self, index: usize) -> Result<&str> {
+        let cstr = unsafe { std::ffi::CStr::from_ptr(PQfname(self.result, index as i32)) };
+        cstr.to_str().map_err(Into::into)
+    }
+}
+
+impl<'a> db_core::row::Row for Row<'a> {
     fn read_at_index<T: ReadType>(&mut self, index: usize) -> Result<T> {
         let row_index = self.row_index as i32;
         let index = index as i32;
@@ -223,4 +347,3 @@ impl<'a> db_core::Row for Row<'a> {
         }
     }
 }
-

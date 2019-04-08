@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 /// Contains the definition of a table in the database
+#[derive(Debug)]
 pub struct Table<'a> {
     /// The name of the table
     pub name: Cow<'a, str>,
@@ -10,7 +11,18 @@ pub struct Table<'a> {
     pub constraints: Vec<TableConstraint<'a>>,
 }
 
+impl<'a> Table<'a> {
+    pub fn with_name(name: impl Into<Cow<'a, str>>) -> Table<'a> {
+        Table {
+            name: name.into(),
+            columns: Vec::new(),
+            constraints: Vec::new(),
+        }
+    }
+}
+
 /// Special constraints on a table
+#[derive(Debug)]
 pub enum TableConstraint<'a> {
     /// An index that contains multiple columns
     MultiColumnIndex(Vec<Cow<'a, str>>),
@@ -20,6 +32,7 @@ pub enum TableConstraint<'a> {
 }
 
 /// A column in a table
+#[derive(Debug)]
 pub struct Column<'a> {
     /// The name of the column
     pub name: Cow<'a, str>,
@@ -38,8 +51,21 @@ pub struct Column<'a> {
     pub flags: ColumnFlags,
 }
 
+impl<'a> Column<'a> {
+    pub fn with_name(name: impl Into<Cow<'a, str>>) -> Column<'a> {
+        Column {
+            name: name.into(),
+            foreign_keys: Vec::new(),
+            default: None,
+            r#type: ColumnType::Custom("".into()),
+            flags: ColumnFlags::default(),
+        }
+    }
+}
+
 bitflags! {
     /// The flags a column can have, e.g. primary key, index, unique, not-nullable
+    #[derive(Default)]
     pub struct ColumnFlags: u32 {
         /// Determines that the column is a primary key
         const PRIMARY  = 0b00000000_00000001;
@@ -58,6 +84,7 @@ bitflags! {
 }
 
 /// The type a column can have
+#[derive(Debug)]
 pub enum ColumnType<'a> {
     /// The column is a smallint. This matches the rust type i16
     SmallInt,
@@ -79,12 +106,13 @@ pub enum ColumnType<'a> {
     Custom(Cow<'a, str>),
 }
 
+#[derive(Debug)]
 pub enum ColumnDefault<'a> {
     Custom(Cow<'a, str>),
 }
 
+#[derive(Debug)]
 pub struct ForeignKey<'a> {
     pub table: Cow<'a, str>,
     pub column: Cow<'a, str>,
 }
-
