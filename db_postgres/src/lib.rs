@@ -97,8 +97,7 @@ impl<'a> ConnectionTrait<'a> for Connection {
         &self,
         builder: db_core::query_builder::QueryBuilder<'a>,
     ) -> Result<QueryResult<'a>> {
-        let query = build_query(&builder);
-        let params = get_query_parameters(&builder);
+        let (query, params) = build_query(&builder);
         self.execute_query(&query, &params)
     }
 
@@ -121,7 +120,7 @@ ORDER BY table_name"#;
         let mut tables = Vec::new();
         let mut current_table: Option<Table> = None;
         for i in 0..len {
-            let mut row = result.get_row(i)?;
+            let row = result.get_row(i)?;
 
             let table_name: String = row.read_at_index(0)?;
             let table: &mut Table = {
@@ -138,16 +137,16 @@ ORDER BY table_name"#;
                 current_table.get_or_insert_with(|| Table::with_name(table_name))
             };
 
-            let column_name: String = row.read_at_index(1)?;
-            let column_default: Option<String> = row.read_at_index(2)?;
+            let column_name: &str = row.read_at_index(1)?;
+            let column_default: Option<&str> = row.read_at_index(2)?;
             let column_nullable: bool = row.read_at_index(3)?;
-            let column_type: String = row.read_at_index(4)?;
+            let column_type: &str = row.read_at_index(4)?;
 
-            let mut column = Column::with_name(column_name);
+            let mut column = Column::with_name(column_name.to_owned());
             if let Some(default) = column_default {
-                column.default = Some(ColumnDefault::Custom(default.into()));
+                column.default = Some(ColumnDefault::Custom(default.to_owned().into()));
             }
-            column.r#type = type_string_to_column_type(column_type);
+            column.r#type = type_string_to_column_type(column_type.to_owned());
             if !column_nullable {
                 column.flags |= ColumnFlags::NOT_NULL;
             }
@@ -165,7 +164,7 @@ ORDER BY table_name"#;
 }
 
 fn type_string_to_column_type(s: String) -> ColumnType<'static> {
-    match s.as_str() {
+    match s.as_ref() {
         "text" | "name" => ColumnType::Text(None),
         "int4" => ColumnType::Int,
         "timestamptz" => ColumnType::Custom("TIMESTAMPTZ".into()),
@@ -175,18 +174,6 @@ fn type_string_to_column_type(s: String) -> ColumnType<'static> {
             ColumnType::Custom(s.into())
         }
     }
-}
-
-fn get_query_parameters<'a, 'b>(
-    builder: &'a db_core::query_builder::QueryBuilder<'b>,
-) -> Vec<&'a db_core::query_builder::Argument<'b>> {
-    let mut result = Vec::with_capacity(builder.criteria.len());
-    for criteria in &builder.criteria {
-        if let db_core::query_builder::FieldOrArgument::Argument(a) = &criteria.right {
-            result.push(a.as_ref());
-        }
-    }
-    result
 }
 
 fn append_field_to_query(query: &mut String, field: &db_core::query_builder::Field) {
@@ -206,15 +193,22 @@ fn append_field_to_query(query: &mut String, field: &db_core::query_builder::Fie
     }
 }
 
-fn build_query(builder: &db_core::query_builder::QueryBuilder) -> String {
+fn build_query<'a, 'b>(builder: &'a db_core::query_builder::QueryBuilder<'b>) -> (String, Vec<&'a db_core::query_builder::Argument<'b>>) {
     let mut query = String::with_capacity(builder.estimate_str_len() * 2);
+    let mut criteria_arguments = Vec::with_capacity(builder.criteria.len());
+
+    let table = &builder.table;
+    let joined_tables = &builder.joined_tables;
+    let select = &builder.select;
+    let criteria = &builder.criteria;
+
     query += "SELECT ";
-    if builder.select.is_empty() {
+    if select.is_empty() {
         query += "*";
     } else {
-        for (index, select) in builder.select.iter().enumerate() {
+        for (index, select) in select.iter().enumerate() {
             if index != 0 {
-                query += ",";
+                query += ", ";
             }
             append_field_to_query(&mut query, select);
         }
@@ -222,12 +216,37 @@ fn build_query(builder: &db_core::query_builder::QueryBuilder) -> String {
 
     query += " FROM ";
     query += TABLE_COLUMN_PREFIX;
-    query += &builder.table;
+    query += table;
     query += TABLE_COLUMN_POSTFIX;
 
-    let mut argument_index = 1;
+    for joined_table in joined_tables {
+        query += " LEFT JOIN ";
+        query += TABLE_COLUMN_PREFIX;
+        query += &joined_table.joined_table;
+        query += TABLE_COLUMN_POSTFIX;
 
-    for (index, criteria) in builder.criteria.iter().enumerate() {
+        for (index, criteria) in joined_table.criteria.iter().enumerate() {
+            if index == 0 { query += " ON "; }
+            else { query += " AND "; }
+            append_field_to_query(&mut query, &criteria.left);
+            query += criteria.comparison.as_query_str();
+
+            match &criteria.right {
+                db_core::query_builder::FieldOrArgument::Field(f) => {
+                    append_field_to_query(&mut query, f)
+                }
+                db_core::query_builder::FieldOrArgument::Argument(a) => {
+                    criteria_arguments.push(a.as_ref());
+
+                    query += "$";
+                    query += &(criteria_arguments.len().to_string());
+                    query += " ";
+                }
+            }
+        }
+    }
+
+    for (index, criteria) in criteria.iter().enumerate() {
         if index == 0 {
             query += " WHERE ";
         } else {
@@ -240,15 +259,16 @@ fn build_query(builder: &db_core::query_builder::QueryBuilder) -> String {
             db_core::query_builder::FieldOrArgument::Field(f) => {
                 append_field_to_query(&mut query, f)
             }
-            db_core::query_builder::FieldOrArgument::Argument(_) => {
+            db_core::query_builder::FieldOrArgument::Argument(a) => {
+                criteria_arguments.push(a.as_ref());
+
                 query += "$";
-                query += &argument_index.to_string();
-                argument_index += 1;
+                query += &(criteria_arguments.len().to_string());
             }
         }
     }
 
-    query
+    (query, criteria_arguments)
 }
 
 impl Drop for Connection {
@@ -322,8 +342,8 @@ impl Row<'_> {
     }
 }
 
-impl<'a> db_core::row::Row for Row<'a> {
-    fn read_at_index<T: ReadType>(&mut self, index: usize) -> Result<T> {
+impl db_core::row::Row for Row<'_> {
+    fn read_at_index<'a, T: ReadType<'a>>(&'a self, index: usize) -> Result<T> {
         let row_index = self.row_index as i32;
         let index = index as i32;
         if unsafe { PQgetisnull(self.result, row_index, index) } != 0 {
@@ -337,7 +357,7 @@ impl<'a> db_core::row::Row for Row<'a> {
             T::from_pq_bytes(Some(slice))
         }
     }
-    fn read_by_name<T: ReadType>(&mut self, name: &str) -> Result<T> {
+    fn read_by_name<'a, T: ReadType<'a>>(&'a self, name: &str) -> Result<T> {
         let cstr = CString::new(name).unwrap_or_default();
         let fnum = unsafe { PQfnumber(self.result, cstr.as_ptr()) };
         match fnum {
