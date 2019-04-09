@@ -1,8 +1,8 @@
 use crate::Result;
 
 pub trait Row {
-    fn read_at_index<'a, T: ReadType<'a>>(&'a self, index: usize) -> Result<T>;
-    fn read_by_name<'a, T: ReadType<'a>>(&'a self, name: &str) -> Result<T>;
+    fn read_at_index<'a, T: ReadType<'a>>(&self, index: usize) -> Result<T>;
+    fn read_by_name<'a, T: ReadType<'a>>(&self, name: &str) -> Result<T>;
 }
 
 // TODO: Could this be merged with db_core::query_builder::Argument?

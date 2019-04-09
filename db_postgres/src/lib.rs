@@ -101,7 +101,7 @@ impl<'a> ConnectionTrait<'a> for Connection {
         self.execute_query(&query, &params)
     }
 
-    fn get_existing_schema(&'a self) -> Result<DatabaseUpdater<'a>> {
+    fn get_existing_schema(&self) -> Result<DatabaseUpdater<'a>> {
         use db_core::connection::QueryResult;
         use db_core::row::Row;
         const COLUMN_QUERY: &str = r#"SELECT
@@ -157,9 +157,11 @@ ORDER BY table_name"#;
             tables.push(table);
         }
 
-        println!("{:?}", tables);
-
         Ok(DatabaseUpdater::from_old_definition(tables))
+    }
+
+    fn update_schema(&self, _updates: &[db_core::database_updater::DatabaseUpdaterChange]) -> Result<()>{
+        Ok(())
     }
 }
 
@@ -308,7 +310,7 @@ impl<'a> db_core::connection::QueryResult<'a> for QueryResult<'a> {
         Ok(self.row_count)
     }
 
-    fn get_row(&self, index: usize) -> Result<Row> {
+    fn get_row(&'a self, index: usize) -> Result<Row<'a>> {
         Ok(Row {
             result: unsafe { self.ptr.as_ref() },
             row_index: index,
@@ -343,7 +345,7 @@ impl Row<'_> {
 }
 
 impl db_core::row::Row for Row<'_> {
-    fn read_at_index<'a, T: ReadType<'a>>(&'a self, index: usize) -> Result<T> {
+    fn read_at_index<'a, T: ReadType<'a>>(&self, index: usize) -> Result<T> {
         let row_index = self.row_index as i32;
         let index = index as i32;
         if unsafe { PQgetisnull(self.result, row_index, index) } != 0 {
@@ -357,7 +359,7 @@ impl db_core::row::Row for Row<'_> {
             T::from_pq_bytes(Some(slice))
         }
     }
-    fn read_by_name<'a, T: ReadType<'a>>(&'a self, name: &str) -> Result<T> {
+    fn read_by_name<'a, T: ReadType<'a>>(&self, name: &str) -> Result<T> {
         let cstr = CString::new(name).unwrap_or_default();
         let fnum = unsafe { PQfnumber(self.result, cstr.as_ptr()) };
         match fnum {

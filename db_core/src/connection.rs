@@ -7,8 +7,9 @@ pub trait Connection<'a>: Sized {
     type QueryResult: QueryResult<'a>;
 
     fn connect(p: Self::ConnectionParam) -> Result<Self>;
-    fn execute(&'a self, builder: QueryBuilder<'a>) -> Result<Self::QueryResult>;
-    fn get_existing_schema(&'a self) -> Result<crate::database_updater::DatabaseUpdater<'a>>;
+    fn execute(&self, builder: QueryBuilder<'a>) -> Result<Self::QueryResult>;
+    fn get_existing_schema(&self) -> Result<crate::database_updater::DatabaseUpdater<'a>>;
+    fn update_schema(&self, updates: &[crate::database_updater::DatabaseUpdaterChange]) -> Result<()>;
 }
 
 pub trait QueryResult<'a> {

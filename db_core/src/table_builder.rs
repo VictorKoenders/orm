@@ -51,6 +51,19 @@ pub struct Column<'a> {
     pub flags: ColumnFlags,
 }
 
+impl<'a> PartialEq for Column<'a> {
+    fn eq(&self, other: &Column) -> bool {
+        if self.name != other.name { return false; }
+        if self.foreign_keys.len() != other.foreign_keys.len() { return false; }
+        // TODO: Compare all foreign keys
+        if self.default != other.default { return false; }
+        if self.r#type != other.r#type { return false; }
+        if self.flags != other.flags { return false; }
+        true
+    }
+}
+
+
 impl<'a> Column<'a> {
     pub fn with_name(name: impl Into<Cow<'a, str>>) -> Column<'a> {
         Column {
@@ -84,7 +97,7 @@ bitflags! {
 }
 
 /// The type a column can have
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ColumnType<'a> {
     /// The column is a smallint. This matches the rust type i16
     SmallInt,
@@ -106,12 +119,12 @@ pub enum ColumnType<'a> {
     Custom(Cow<'a, str>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ColumnDefault<'a> {
     Custom(Cow<'a, str>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ForeignKey<'a> {
     pub table: Cow<'a, str>,
     pub column: Cow<'a, str>,

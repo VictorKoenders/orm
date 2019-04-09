@@ -163,8 +163,8 @@ pub enum Comparison<'a> {
     Custom(Cow<'a, str>),
 }
 
-impl<'a> Comparison<'a> {
-    pub fn as_query_str(&'a self) -> &'a str {
+impl Comparison<'_> {
+    pub fn as_query_str(&self) -> &str {
         match self {
             Comparison::EqualTo => "=",
             Comparison::GreaterThen => ">",

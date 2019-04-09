@@ -35,8 +35,9 @@ pub fn test_pg_query() {
             },
         ],
     });
+    let diff = database_updater.diff();
 
-    // database_updater.update_schema().expect("Could not update schema");
+    conn.update_schema(&diff).expect("Could not update schema");
 
     let query_builder = db_core::query_builder::QueryBuilder {
         table: "user".into(),
