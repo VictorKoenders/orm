@@ -1,0 +1,13 @@
+[package]
+name = "orm_core"
+version = "0.1.0"
+authors = ["Trangar <victor.koenders@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+orm_derive = { path = "../orm_derive", optional = true }
+
+[features]
+derive = ["orm_derive"]

@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "orm_derive",
+    "orm_core",
+    "orm_pq",
+    "test_bin"
+]
+
